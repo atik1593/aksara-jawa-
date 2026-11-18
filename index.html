@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="jv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Catch the Answer – Tangkap Jawaban</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Javanese:wght@700&family=Baloo+2:wght@600;800&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<style>
+:root{--ink:#3b2a14;--card:#fffaf0;--g1:#7ed957;--g2:#2f9e44;--accent:#ff7a29;--bad:#e03131}
+*{box-sizing:border-box}
+html,body{margin:0;background:#bfeaff;font-family:'Baloo 2','Trebuchet MS',sans-serif;color:var(--ink);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.jv{font-family:'Noto Sans Javanese','Noto Serif Javanese',serif;font-size:1.5em;line-height:1}
+#app{max-width:900px;margin:0 auto;padding:8px}
+#nav{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;background:var(--g2);color:#fff;border-radius:14px;padding:8px 14px;font-weight:800;font-size:1.05rem}
+#q{background:var(--card);border:4px solid var(--accent);border-radius:16px;margin:8px 0;padding:8px 14px;text-align:center;font-size:1.2rem;font-weight:800;min-height:62px;display:flex;align-items:center;justify-content:center;flex-direction:column}
+#q small{font-size:.75rem;background:var(--accent);color:#fff;border-radius:99px;padding:0 10px}
+#stage{position:relative}
+canvas{width:100%;display:block;border-radius:16px;border:4px solid var(--g2);touch-action:none;background:#9be7ff}
+#cam{position:absolute;right:8px;top:8px;width:120px;border-radius:10px;transform:scaleX(-1);opacity:.85;display:none;border:2px solid #fff}
+.ov{position:absolute;inset:0;background:rgba(255,250,240,.94);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:16px;gap:10px}
+.ov h1{margin:0;font-size:2rem;color:var(--g2)}
+.ov p{margin:0}
+input[type=text]{font:inherit;font-size:1.2rem;padding:8px 14px;border:3px solid var(--g2);border-radius:12px;text-align:center;width:min(300px,90%);color:var(--ink);background:#fff}
+button{font:inherit;font-weight:800;font-size:1.15rem;background:var(--accent);color:#fff;border:0;border-radius:99px;padding:10px 28px;cursor:pointer;box-shadow:0 4px 0 #c4561a}
+button:active{transform:translateY(3px);box-shadow:none}
+label{font-size:1rem}
+.hide{display:none!important}
+#stat{font-size:.85rem;opacity:.8}
+.stars{font-size:2.4rem}
+</style>
+</head>
+<body>
+<div id="app">
+ <div id="nav"><span>👤 <span id="nm">-</span></span><span>Level <span id="lv">1</span>/5</span><span>⭐ <span id="sc">0</span></span><span id="hp">❤️❤️❤️</span><span>⏱ <span id="tm">30</span></span></div>
+ <div id="q">Pertanyaan bakal katon ing kene</div>
+ <div id="stage">
+  <canvas id="c" width="800" height="500"></canvas>
+  <video id="cam" playsinline muted></video>
+  <div id="menu" class="ov">
+   <h1>🍎 Catch the Answer 🍇</h1>
+   <p><b>Tangkap Jawaban – Aksara Jawa</b> · Kelas 3</p>
+   <input id="name" type="text" maxlength="20" placeholder="Tulis jenengmu…">
+   <label><input id="usecam" type="checkbox" checked> Pakai kamera (gerakkan telapak tangan)</label>
+   <button id="go">Mulai Main ▶</button>
+   <p id="stat">Alternatif: gerakkan mouse / sentuh layar / tombol ← → atau A D.</p>
+  </div>
+  <div id="msg" class="ov hide"></div>
+ </div>
+</div>
+<script>
+(function(){
+const A={ha:'\uA9B2',na:'\uA9A4',ca:'\uA995',ra:'\uA9AB',ka:'\uA98F',da:'\uA9A2',ta:'\uA9A0',sa:'\uA9B1',wa:'\uA9AE',la:'\uA9AD',pa:'\uA9A5',dha:'\uA99D',ja:'\uA997',ya:'\uA9AA',nya:'\uA99A',ma:'\uA9A9',ga:'\uA992',ba:'\uA9A7',tha:'\uA99B',nga:'\uA994'};
+const J=k=>'<span class="jv">'+A[k]+'</span>';
+// g:true => pilihan berupa aksara Jawa
+const Q=[
+ {t:'LOTS',q:'Aksara '+J('ha')+' diwaca…',a:'ha',w:['na','ka','ra']},
+ {t:'LOTS',q:'Aksara '+J('na')+' diwaca…',a:'na',w:['ca','ha','da']},
+ {t:'LOTS',q:'Aksara '+J('ca')+' diwaca…',a:'ca',w:['ra','ta','ka']},
+ {t:'LOTS',q:'Aksara '+J('ra')+' diwaca…',a:'ra',w:['ka','sa','na']},
+ {t:'LOTS',q:'Aksara '+J('ka')+' diwaca…',a:'ka',w:['ha','da','ta']},
+ {t:'LOTS',q:'Aksara '+J('da')+' diwaca…',a:'da',w:['ta','pa','ca']},
+ {t:'MOTS',q:'Pilih aksara Jawa kanggo swara “ta”',g:1,a:'ta',w:['da','sa','wa']},
+ {t:'MOTS',q:'Pilih aksara Jawa kanggo swara “sa”',g:1,a:'sa',w:['ta','wa','la']},
+ {t:'MOTS',q:'Pilih aksara Jawa kanggo swara “wa”',g:1,a:'wa',w:['la','sa','pa']},
+ {t:'MOTS',q:'Pilih aksara Jawa kanggo swara “la”',g:1,a:'la',w:['wa','pa','ha']},
+ {t:'MOTS',q:'Pilih aksara Jawa kanggo swara “pa”',g:1,a:'pa',w:['dha','ja','ya']},
+ {t:'MOTS',q:'Pilih aksara Jawa kanggo swara “ja”',g:1,a:'ja',w:['ya','pa','nya']},
+ {t:'HOTS',q:'Urutan Hanacaraka: '+J('ha')+' '+J('na')+' '+J('ca')+' '+J('ra')+' '+J('ka'),sub:'Aksara kaping 3 diwaca…',a:'ca',w:['na','ra','ka']},
+ {t:'HOTS',q:'Sawise '+J('ca')+' '+J('ra')+' '+J('ka') +' yaiku aksara…',sub:'Urutan Hanacaraka',g:1,a:'da',w:['ta','sa','wa']},
+ {t:'HOTS',q:'Tembung “kala”: aksara kapindho ditulis…',sub:'Tembung = ka + la',g:1,a:'la',w:['ka','ra','na']}
+];
+const $=id=>document.getElementById(id);
+const cv=$('c'),cx=cv.getContext('2d'),W=800,H=500;
+let S={st:'menu',qi:0,score:0,lives:3,time:30,objs:[],parts:[],bx:W/2,tx:W/2,name:'',lock:false,keys:{},handOn:false,t:0};
+const FR=[['#ff5252','#b71c1c'],['#ffa940','#d9480f'],['#b57bff','#5f3dc4'],['#8ce99a','#2b8a3e'],['#ffe066','#e67700']];
+
+// ---- audio
+let ac;function snd(f,d,type,v){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),g=ac.createGain();o.type=type||'sine';o.frequency.value=f;g.gain.value=v||.15;g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+d)}catch(e){}}
+const good=()=>{snd(660,.12);setTimeout(()=>snd(880,.15),110);setTimeout(()=>snd(1100,.2),220)};
+const bad=()=>{snd(220,.25,'sawtooth',.12);setTimeout(()=>snd(160,.3,'sawtooth',.12),180)};
+
+// ---- level & question
+function lvl(){return Math.floor(S.qi/3)+1}
+function ui(){$('nm').textContent=S.name;$('lv').textContent=Math.min(5,lvl());$('sc').textContent=S.score;$('hp').textContent='❤️'.repeat(S.lives)+'🖤'.repeat(3-S.lives);$('tm').textContent=Math.ceil(S.time)}
+function showMsg(html,btn,cb,auto){const m=$('msg');m.innerHTML=html+(btn?'<button id="mb">'+btn+'</button>':'');m.classList.remove('hide');S.lock=true;
+ const f=()=>{m.classList.add('hide');S.lock=false;cb&&cb()};
+ if(btn)$('mb').onclick=f;if(auto)setTimeout(f,auto)}
+function startQ(){
+ if(S.qi>=Q.length)return end(true);
+ const q=Q[S.qi];
+ $('q').innerHTML='<small>'+q.t+' · Level '+lvl()+'</small><div>'+q.q+'</div>'+(q.sub?'<div style="font-size:.85rem;font-weight:600">'+q.sub+'</div>':'');
+ S.time=30;spawn();ui();
+}
+function nextQ(){S.qi++;S.objs=[];
+ if(S.qi>=Q.length)return end(true);
+ if(S.qi%3===0)showMsg('<h1>🌟 Level '+lvl()+'</h1><p>Siap-siap! Buah bakal tiba luwih cepet.</p>',null,startQ,1700);else startQ()}
+function spawn(){
+ const q=Q[S.qi],opts=[q.a,...q.w].sort(()=>Math.random()-.5),cols=[0,1,2,3].sort(()=>Math.random()-.5);
+ S.objs=opts.map((k,i)=>({k,ok:k===q.a,x:100+cols[i]*200+(Math.random()*30-15),y:-40-i*(90+Math.random()*50),r:42,f:FR[(Math.random()*FR.length)|0],rot:Math.random()*6}));
+}
+function end(done){
+ S.st='end';S.objs=[];
+ const pct=S.score/1500,stars=pct>=.9?3:pct>=.6?2:pct>0?1:0;
+ const s='⭐'.repeat(stars)+'☆'.repeat(3-stars);
+ const txt=pct>=.9?'Luar biasa! Kowe juara Aksara Jawa!':pct>=.6?'Apik tenan! Terus sinau ya!':'Semangat! Coba maneh supaya luwih apik!';
+ $('q').textContent=done?'Tamat! Matur nuwun sampun main 🎉':'Kesempatan entek 😢';
+ showMsg('<h1>'+(done?'🏆 Sugeng, '+S.name+'!':'Dolanan rampung')+'</h1><div class="stars">'+s+'</div><p style="font-size:1.4rem"><b>Skor: '+S.score+'</b> / 1500</p><p>'+txt+'</p>','Main Maneh ↻',()=>{S.st='menu';$('menu').classList.remove('hide')});
+ if(done)good();
+}
+function burst(x,y,c,n){for(let i=0;i<n;i++)S.parts.push({x,y,vx:(Math.random()-.5)*400,vy:-Math.random()*350,l:1,c})}
+
+// ---- loop
+let last=0;
+function loop(ts){
+ const dt=Math.min(.05,(ts-last)/1000||0);last=ts;
+ if(S.st==='play'){
+  if(S.keys.ArrowLeft||S.keys.a)S.tx-=520*dt;if(S.keys.ArrowRight||S.keys.d)S.tx+=520*dt;
+  S.tx=Math.max(65,Math.min(W-65,S.tx));
+  S.bx+=(S.tx-S.bx)*Math.min(1,dt*18);
+  if(!S.lock){
+   S.time-=dt;
+   const sp=75+lvl()*22;let anyOk=false;
+   const by=H-62;
+   for(const o of S.objs){o.y+=sp*dt;o.rot+=dt;
+    if(o.ok&&!o.dead)anyOk=true;
+    if(!o.dead&&o.y+o.r*.8>=by&&o.y<by+30&&Math.abs(o.x-S.bx)<75){o.dead=true;catchObj(o);if(S.lock)break}
+    if(o.y>H+60&&!o.dead)o.dead=true}
+   if(!S.lock){
+    if(S.time<=0)return loseLife('Wektu entek!');
+    if(S.objs.every(o=>o.dead||o.y>H+60)&&!S.lock){spawn()}
+   }
+  }
+ }
+ for(const p of S.parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=900*dt;p.l-=dt*1.4}
+ S.parts=S.parts.filter(p=>p.l>0);
+ draw();ui();requestAnimationFrame(loop);
+}
+function catchObj(o){
+ const q=Q[S.qi];
+ if(o.ok){S.score+=100;good();burst(o.x,o.y,'#ffd43b',30);
+  showMsg('<h1 style="color:#2f9e44">✅ Bener! +100</h1><p>Hebat, '+S.name+'!</p>',null,nextQ,1100)}
+ else{bad();burst(o.x,o.y,'#e03131',18);
+  const ans=q.g?J(q.a):'“'+q.a+'”';
+  loseLife('Jawaban durung pas. Sing bener: '+ans)}
+}
+function loseLife(txt){
+ S.lives--;S.objs=[];ui();
+ if(S.lives<=0){S.lock=false;return end(false)}
+ showMsg('<h1 style="color:#e03131">❌ Ups!</h1><p style="font-size:1.2rem">'+txt+'</p><p>Kesempatan isih '+S.lives+' ❤️</p>',null,nextQ,2400);
+}
+
+// ---- drawing
+function draw(){
+ const g=cx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#7fd6ff');g.addColorStop(.7,'#d8f6ff');g.addColorStop(1,'#fff4c4');
+ cx.fillStyle=g;cx.fillRect(0,0,W,H);
+ cx.fillStyle='#fff';[[120,70,1],[420,50,1.3],[690,90,.9]].forEach(([x,y,s])=>{cx.beginPath();cx.arc(x,y,28*s,0,7);cx.arc(x+30*s,y+6,22*s,0,7);cx.arc(x-28*s,y+8,20*s,0,7);cx.fill()});
+ cx.fillStyle='#9be07a';cx.beginPath();cx.ellipse(200,H,320,140,0,0,7);cx.fill();
+ cx.fillStyle='#6cc551';cx.beginPath();cx.ellipse(620,H,380,110,0,0,7);cx.fill();
+ [[90,H-110],[730,H-100]].forEach(([x,y])=>{cx.fillStyle='#8d5524';cx.fillRect(x-8,y,16,70);cx.fillStyle='#2f9e44';cx.beginPath();cx.arc(x,y,42,0,7);cx.fill();cx.fillStyle='#ff6b6b';[[-18,-8],[14,-14],[2,14]].forEach(([a,b])=>{cx.beginPath();cx.arc(x+a,y+b,7,0,7);cx.fill()})});
+ for(const o of S.objs){if(o.dead)continue;fruit(o)}
+ basket();
+ for(const p of S.parts){cx.globalAlpha=Math.max(0,p.l);cx.fillStyle=p.c;cx.beginPath();cx.arc(p.x,p.y,5,0,7);cx.fill()}
+ cx.globalAlpha=1;
+ if(S.handOn){cx.fillStyle='rgba(47,158,68,.9)';cx.font='700 14px sans-serif';cx.textAlign='left';cx.fillText('✋ Tangan kedeteksi',10,22)}
+}
+function fruit(o){
+ const{x,y,r}=o;const rg=cx.createRadialGradient(x-r*.35,y-r*.4,r*.1,x,y,r);rg.addColorStop(0,'#fff');rg.addColorStop(.25,o.f[0]);rg.addColorStop(1,o.f[1]);
+ cx.fillStyle='rgba(0,0,0,.15)';cx.beginPath();cx.ellipse(x+6,y+r+6,r*.8,8,0,0,7);cx.fill();
+ cx.fillStyle=rg;cx.beginPath();cx.arc(x,y,r,0,7);cx.fill();
+ cx.fillStyle='#8d5524';cx.fillRect(x-2,y-r-8,4,12);
+ cx.fillStyle='#2f9e44';cx.beginPath();cx.ellipse(x+12,y-r-3,14,6,-.5,0,7);cx.fill();
+ const q=Q[S.qi];cx.textAlign='center';cx.textBaseline='middle';cx.fillStyle='#fff';cx.strokeStyle='rgba(0,0,0,.55)';cx.lineWidth=5;
+ if(q&&q.g){cx.font='700 44px "Noto Sans Javanese",serif';cx.strokeText(A[o.k],x,y+6);cx.fillText(A[o.k],x,y+6)}
+ else{cx.font='800 30px "Baloo 2",sans-serif';cx.strokeText(o.k,x,y);cx.fillText(o.k,x,y)}
+ cx.textBaseline='alphabetic';
+}
+function basket(){
+ const x=S.bx,y=H-62,w=120;
+ cx.fillStyle='rgba(0,0,0,.18)';cx.beginPath();cx.ellipse(x,y+58,w*.55,8,0,0,7);cx.fill();
+ const g=cx.createLinearGradient(0,y,0,y+55);g.addColorStop(0,'#e8a45a');g.addColorStop(1,'#9c5a1f');
+ cx.fillStyle=g;cx.beginPath();cx.moveTo(x-w/2-8,y);cx.lineTo(x+w/2+8,y);cx.lineTo(x+w/2-12,y+55);cx.lineTo(x-w/2+12,y+55);cx.closePath();cx.fill();
+ cx.strokeStyle='#7a4410';cx.lineWidth=2;for(let i=-3;i<=3;i++){cx.beginPath();cx.moveTo(x+i*16,y+4);cx.lineTo(x+i*14,y+52);cx.stroke()}
+ for(let j=1;j<4;j++){cx.beginPath();cx.moveTo(x-w/2-8+j*3,y+j*14);cx.lineTo(x+w/2+8-j*3,y+j*14);cx.stroke()}
+ cx.fillStyle='#c7792b';cx.beginPath();cx.ellipse(x,y,w/2+8,9,0,0,7);cx.fill();cx.fillStyle='#4a2a08';cx.beginPath();cx.ellipse(x,y+1,w/2-2,6,0,0,7);cx.fill();
+}
+
+// ---- input
+function setX(clientX){const r=cv.getBoundingClientRect();S.tx=(clientX-r.left)/r.width*W}
+cv.addEventListener('mousemove',e=>{if(!S.handOn)setX(e.clientX)});
+cv.addEventListener('touchmove',e=>{e.preventDefault();setX(e.touches[0].clientX)},{passive:false});
+cv.addEventListener('touchstart',e=>setX(e.touches[0].clientX),{passive:true});
+addEventListener('keydown',e=>{S.keys[e.key]=true;if(e.key.length===1)S.keys[e.key.toLowerCase()]=true;if(e.key.startsWith('Arrow'))e.preventDefault()});
+addEventListener('keyup',e=>{S.keys[e.key]=false;if(e.key.length===1)S.keys[e.key.toLowerCase()]=false});
+
+// ---- hand tracking (MediaPipe Hands)
+let hands,camOn=false;
+async function initHand(){
+ const vid=$('cam'),st=$('stat');
+ try{
+  if(typeof Hands==='undefined')throw new Error('MediaPipe tidak termuat');
+  st.textContent='Menyalakan kamera…';
+  const stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'}});
+  vid.srcObject=stream;await vid.play();vid.style.display='block';
+  hands=new Hands({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/'+f});
+  hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.6,minTrackingConfidence:.5});
+  let seen=0;
+  hands.onResults(r=>{
+   if(r.multiHandLandmarks&&r.multiHandLandmarks[0]){const l=r.multiHandLandmarks[0][9];S.tx=(1-l.x)*W;S.handOn=true;seen=performance.now()}
+   else if(performance.now()-seen>800)S.handOn=false});
+  camOn=true;
+  const pump=async()=>{if(!camOn)return;if(vid.readyState>=2){try{await hands.send({image:vid})}catch(e){}}requestAnimationFrame(pump)};
+  pump();
+ }catch(e){
+  camOn=false;S.handOn=false;vid.style.display='none';
+  st.textContent='Kamera/pelacak tangan ora bisa dipakai. Gunakan mouse, sentuh, utawa tombol ← →.';
+ }
+}
+
+$('go').onclick=async()=>{
+ S.name=($('name').value.trim()||'Siswa').slice(0,20);
+ S.qi=0;S.score=0;S.lives=3;S.parts=[];S.objs=[];S.keys={};
+ $('menu').classList.add('hide');
+ ac=ac||new (window.AudioContext||window.webkitAudioContext)();snd(520,.1);
+ if($('usecam').checked&&!camOn)initHand();
+ S.st='play';
+ showMsg('<h1>Level 1</h1><p>Halo, <b>'+S.name+'</b>! Gerakkan telapak tanganmu ke kiri / kanan kanggo nangkep jawaban sing bener.</p>','Ayo! 🚀',startQ);
+};
+ui();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
